@@ -3,51 +3,27 @@ from bs4 import BeautifulSoup
 import os
 from datetime import datetime, timedelta
 import pytz
-import re
 
-def get_relative_time_string(dt):
-    """Berechnet die vergangene Zeit seit Veröffentlichung."""
+def parse_relative_time(num_str, desc_str):
+    """Wandelt '19' und 'min' oder '1' und 'h' in einen Zeitstempel um."""
+    tz = pytz.timezone('Europe/Zagreb')
+    now = datetime.now(tz)
     try:
-        tz = pytz.timezone('Europe/Zagreb')
-        now = datetime.now(tz)
-        diff = now - dt
-        seconds = diff.total_seconds()
-        
-        if seconds < 0: return "GERADE EBEN" # Falls Uhrzeit in der Zukunft liegt (Server-Sync)
-        if seconds < 3600: # Weniger als 1 Stunde
-            mins = int(seconds / 60)
-            return f"VOR {max(1, mins)} MINUTEN"
-        elif seconds < 86400: # Weniger als 24 Stunden
-            hours = int(seconds / 3600)
-            return f"VOR {hours} {'STUNDE' if hours == 1 else 'STUNDEN'}"
-        else:
-            return dt.strftime("%d.%m. %H:%M")
-    except:
-        return "AKTUELL"
-
-def get_article_time(url, headers):
-    """Versucht die Zeit aus dem Artikel zu lesen. Wenn es fehlschlägt, gibt es None zurück."""
-    try:
-        res = requests.get(url, headers=headers, timeout=8)
-        if res.status_code != 200: return None
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # Suche nach ISO Zeitstempel in Meta-Tags
-        meta_time = soup.find("meta", property="article:published_time")
-        if meta_time and meta_time.get("content"):
-            iso_date = meta_time.get("content")
-            # Robustes Parsing
-            dt = datetime.fromisoformat(iso_date.replace('Z', '+00:00'))
-            return dt.astimezone(pytz.timezone('Europe/Zagreb'))
+        num = int(num_str)
+        if 'min' in desc_str.lower():
+            return now - timedelta(minutes=num), f"VOR {num} MINUTEN"
+        elif 'h' in desc_str.lower():
+            return now - timedelta(hours=num), f"VOR {num} {'STUNDE' if num == 1 else 'STUNDEN'}"
+        elif 'd' in desc_str.lower():
+            return now - timedelta(days=num), f"VOR {num} TAGEN"
     except:
         pass
-    return None
+    return now, "GERADE EBEN"
 
 def get_news():
-    base_url = "https://www.index.hr"
-    url = "https://www.index.hr/sport"
+    url = "https://www.index.hr/najnovije?kategorija=150"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     
     news_data = []
@@ -55,78 +31,55 @@ def get_news():
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Wir suchen alle Artikelboxen
-        articles = soup.select('.first-news-holder, .grid-item')
-        print(f"Gefundene Artikel: {len(articles)}")
-
-        for art in articles[:10]: # Top 10 prüfen
+        # Wir suchen alle Listen-Elemente in der "latest" Liste
+        articles = soup.select('ul.latest > li')
+        
+        for art in articles[:10]: # Die neuesten 10
             try:
-                title_el = art.select_one('.title')
-                link_el = art.select_one('a')
-                img_el = art.select_one('img')
+                # Zeit extrahieren (die linke Spalte)
+                num = art.select_one('.num').get_text(strip=True)
+                desc = art.select_one('.desc').get_text(strip=True)
+                dt_obj, rel_time_str = parse_relative_time(num, desc)
                 
-                if title_el and link_el:
+                # Inhalt extrahieren
+                title_el = art.select_one('.title')
+                img_el = art.select_one('.img-holder img')
+                
+                if title_el and img_el:
                     title = title_el.get_text(strip=True)
-                    link = link_el['href']
-                    if not link.startswith('http'): link = base_url + link
+                    img = img_el['src']
                     
-                    # Bild finden (entweder src oder data-src)
-                    img = ""
-                    if img_el:
-                        img = img_el.get('src') or img_el.get('data-src') or ""
+                    # Bild-URL für XXL säubern
+                    if '?' in img:
+                        img = img.split('?')[0] + "?width=1200&height=630&mode=crop"
                     
-                    # Deep-Scraping Versuch für die Zeit
-                    dt_obj = get_article_time(link, headers)
-                    
-                    # Zeit-String erstellen
-                    if dt_obj:
-                        rel_time = get_relative_time_string(dt_obj)
-                        sort_val = dt_obj
-                    else:
-                        rel_time = "AKTUELL"
-                        sort_val = datetime.now(pytz.timezone('Europe/Zagreb'))
-
                     news_data.append({
                         'title': title,
                         'image': img,
-                        'time_obj': sort_val,
-                        'rel_time': rel_time
+                        'rel_time': rel_time_str,
+                        'time_obj': dt_obj
                     })
-            except Exception as e:
-                print(f"Fehler bei Artikel-Extraktion: {e}")
-                continue
+            except: continue
 
-        # Sortierung nach Zeit (nur wenn Zeit-Objekte da sind)
-        news_data.sort(key=lambda x: x['time_obj'], reverse=True)
         return news_data
     except Exception as e:
-        print(f"Haupt-Scraping Fehler: {e}")
+        print(f"Fehler: {e}")
         return []
 
 def generate_html(news):
     tz = pytz.timezone('Europe/Zagreb')
-    now = datetime.now(tz).strftime("%H:%M")
+    now = datetime.now(tz).strftime("%d.%m.%Y - %H:%M")
     
-    # FALLBACK: Falls news leer ist, erstelle eine Info-Slide
     if not news:
-        news = [{'title': 'Nachrichten werden aktualisiert...', 'image': '', 'rel_time': 'SYSTEM', 'time_obj': datetime.now()}]
+        news = [{'title': 'Tražim najnovije vijesti...', 'image': '', 'rel_time': 'INDEX', 'time_obj': datetime.now()}]
 
     slides_html = ""
     for i, item in enumerate(news):
         active_class = "active" if i == 0 else ""
-        img_url = item['image']
-        
-        # Bild-URL für Index.hr optimieren (Fallback zu Platzhalter falls leer)
-        if img_url:
-            if 'index.hr' in img_url and '?' in img_url:
-                img_url = img_url.split('?')[0] + "?width=1200&height=630&mode=crop"
-        else:
-            img_url = "https://placehold.co/1200x630/000000/FFFFFF?text=INDEX+SPORT"
-
         slides_html += f"""
         <div class="slide {active_class}">
             <div class="image-container">
-                <img src="{img_url}" alt="News Image">
+                <img src="{item['image']}" onerror="this.src='https://placehold.co/1200x630/000000/FFFFFF?text=INDEX+SPORT'">
                 <div class="img-overlay"></div>
             </div>
             <div class="content-box">
@@ -156,7 +109,7 @@ def generate_html(news):
         .image-container {{ width: 100%; height: 55vh; position: relative; overflow: hidden; background: #111; }}
         .image-container img {{ width: 100%; height: 100%; object-fit: cover; border-bottom: 6px solid #00b4d8; }}
         .img-overlay {{ position: absolute; bottom: 0; left: 0; width: 100%; height: 25%; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); }}
-        .content-box {{ flex: 1; padding: 30px 60px; background: #000; display: flex; flex-direction: column; justify-content: flex-start; padding-top: 35px; }}
+        .content-box {{ flex: 1; padding: 35px 60px; background: #000; display: flex; flex-direction: column; justify-content: flex-start; }}
         .meta-line {{ display: flex; gap: 30px; align-items: center; margin-bottom: 20px; }}
         .source {{ color: #00b4d8; font-weight: 900; font-size: 3rem; letter-spacing: 3px; }}
         .pub-time {{ color: #ffffff; font-family: 'JetBrains Mono'; font-size: 3rem; font-weight: 800; }}
@@ -165,7 +118,7 @@ def generate_html(news):
     </style>
 </head>
 <body>
-    <div class="header-info">UPDATE: {now}</div>
+    <div class="header-info">OSVJEŽENO: {now}</div>
     {slides_html}
     <script>
         const slides = document.querySelectorAll('.slide');
