@@ -31,17 +31,14 @@ def get_news():
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Wir suchen alle Listen-Elemente in der "latest" Liste
         articles = soup.select('ul.latest > li')
         
-        for art in articles[:10]: # Die neuesten 10
+        for art in articles[:10]:
             try:
-                # Zeit extrahieren (die linke Spalte)
                 num = art.select_one('.num').get_text(strip=True)
                 desc = art.select_one('.desc').get_text(strip=True)
                 dt_obj, rel_time_str = parse_relative_time(num, desc)
                 
-                # Inhalt extrahieren
                 title_el = art.select_one('.title')
                 img_el = art.select_one('.img-holder img')
                 
@@ -49,7 +46,6 @@ def get_news():
                     title = title_el.get_text(strip=True)
                     img = img_el['src']
                     
-                    # Bild-URL für XXL säubern
                     if '?' in img:
                         img = img.split('?')[0] + "?width=1200&height=630&mode=crop"
                     
@@ -79,7 +75,7 @@ def generate_html(news):
         slides_html += f"""
         <div class="slide {active_class}">
             <div class="image-container">
-                <img src="{item['image']}" onerror="this.src='https://placehold.co/1200x630/000000/FFFFFF?text=INDEX+SPORT'">
+                <img src="{item['image']}" alt="News Image">
                 <div class="img-overlay"></div>
             </div>
             <div class="content-box">
@@ -98,42 +94,92 @@ def generate_html(news):
 <head>
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="googlebot" content="noindex">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Index Sport Radar XXL</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <style>
-        body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; color: white; font-family: 'Inter', sans-serif; overflow: hidden; }}
-        .header-info {{ position: fixed; top: 15px; right: 20px; z-index: 100; background: rgba(0, 180, 216, 0.9); padding: 5px 15px; border-radius: 8px; font-family: 'JetBrains Mono'; font-size: 1.2rem; font-weight: 800; }}
-        .slide {{ position: absolute; width: 100%; height: 100%; display: none; flex-direction: column; }}
+        body, html {{ 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background-color: black; color: white; font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }}
+        
+        .header-info {{
+            position: fixed; top: 15px; right: 20px; z-index: 100;
+            background: rgba(0, 180, 216, 0.9); color: white;
+            padding: 5px 15px; border-radius: 8px;
+            font-family: 'JetBrains Mono'; font-size: 1.3rem;
+            font-weight: 800; box-shadow: 0 0 15px rgba(0,0,0,0.5);
+        }}
+
+        .slide {{
+            position: absolute; width: 100%; height: 100%;
+            display: none; flex-direction: column;
+        }}
         .slide.active {{ display: flex; animation: fadeIn 0.8s ease-in; }}
-        .image-container {{ width: 100%; height: 55vh; position: relative; overflow: hidden; background: #111; }}
-        .image-container img {{ width: 100%; height: 100%; object-fit: cover; border-bottom: 6px solid #00b4d8; }}
-        .img-overlay {{ position: absolute; bottom: 0; left: 0; width: 100%; height: 25%; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); }}
-        .content-box {{ flex: 1; padding: 35px 60px; background: #000; display: flex; flex-direction: column; justify-content: flex-start; }}
+
+        /* BILD-BEREICH EXAKT WIE IM GEWÜNSCHTEN CODE */
+        .image-container {{ 
+            width: 100%; height: 55vh; position: relative; overflow: hidden; 
+        }}
+        
+        .image-container img {{ 
+            width: 100%; height: 100%; 
+            object-fit: cover; 
+            object-position: center top; 
+            border-bottom: 6px solid #00b4d8;
+        }}
+
+        .img-overlay {{
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 25%;
+            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+        }}
+
+        /* TEXT-BEREICH EXAKT WIE IM GEWÜNSCHTEN CODE */
+        .content-box {{ 
+            flex: 1; padding: 25px 60px; 
+            background: linear-gradient(to bottom, #0c0c0c, #000);
+            display: flex; flex-direction: column; justify-content: flex-start;
+            padding-top: 30px;
+        }}
+
         .meta-line {{ display: flex; gap: 30px; align-items: center; margin-bottom: 20px; }}
-        .source {{ color: #00b4d8; font-weight: 900; font-size: 3rem; letter-spacing: 3px; }}
-        .pub-time {{ color: #ffffff; font-family: 'JetBrains Mono'; font-size: 3rem; font-weight: 800; }}
-        .title {{ font-size: 4.5rem; font-weight: 900; line-height: 1.05; text-transform: uppercase; letter-spacing: -2px; color: #ffffff; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }}
-        @keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+        .source {{ color: #00b4d8; font-weight: 900; font-size: 2.8rem; letter-spacing: 3px; }}
+        .pub-time {{ color: #ffffff; font-family: 'JetBrains Mono'; font-size: 2.8rem; font-weight: 800; }}
+
+        .title {{ 
+            font-size: 4.5rem; font-weight: 900; line-height: 1.05; 
+            text-transform: uppercase; letter-spacing: -2px;
+            display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+            color: #f0f0f0;
+        }}
+
+        @keyframes fadeIn {{ from {{ opacity: 0; transform: scale(1.01); }} to {{ opacity: 1; transform: scale(1); }} }}
     </style>
 </head>
 <body>
-    <div class="header-info">OSVJEŽENO: {now}</div>
+    <div class="header-info">STAND: {now}</div>
     {slides_html}
+
     <script>
         const slides = document.querySelectorAll('.slide');
         let current = 0;
+        
         function nextSlide() {{
             if (slides.length <= 1) return;
             slides[current].classList.remove('active');
             current = (current + 1) % slides.length;
             slides[current].classList.add('active');
         }}
+
         setInterval(nextSlide, 10000); 
+        setTimeout(() => {{ location.reload(); }}, 1800000);
     </script>
 </body>
 </html>
     """
+    
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
