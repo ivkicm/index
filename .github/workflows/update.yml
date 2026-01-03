@@ -2,18 +2,22 @@ name: Update Index Sport News
 
 on:
   schedule:
-    # Erläuterung:
-    # Minuten: 0 und 30
-    # Stunden: 5 bis 22 (UTC Zeit)
-    # Entspricht in DE: 06:00 Uhr bis 23:59 Uhr
-    - cron: '0,30 5-22 * * *'
+    # ZEITPLAN (Alle 90 Minuten zwischen ca. 07:00 und 22:00 Uhr DE-Zeit)
+    # Da GitHub UTC nutzt, müssen wir 1 Stunde abziehen (im Winter).
+    
+    # Runde 1: Volle Stunden (06:00, 09:00, 12:00, 15:00, 18:00 UTC)
+    - cron: '0 6,9,12,15,18 * * *'
+    
+    # Runde 2: Halbe Stunden (07:30, 10:30, 13:30, 16:30, 19:30 UTC)
+    - cron: '30 7,10,13,16,19 * * *'
+    
   workflow_dispatch: # Ermöglicht weiterhin manuellen Start per Button
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Erlaubt das Speichern der index.html im Repo
+      contents: write # Wichtig, damit der Bot speichern darf
       
     steps:
       - name: Checkout
@@ -25,7 +29,6 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        # Falls du die RSS-Version (feedparser) nutzt, habe ich es hier ergänzt
         run: pip install requests beautifulsoup4 pytz feedparser
 
       - name: Scrape
@@ -37,5 +40,5 @@ jobs:
           git config --global user.email "actions@github.com"
           git add .
           # Nur committen wenn Änderungen da sind, verhindert Fehlermeldungen
-          git commit -m "Update Data (Daily Schedule)" || exit 0
+          git commit -m "Update Data (90min Schedule)" || exit 0
           git push
